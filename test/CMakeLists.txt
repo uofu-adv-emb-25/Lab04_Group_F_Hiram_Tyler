@@ -1,6 +1,14 @@
-add_executable(mytest test.c unity_config.c)
+add_executable(mytest test_signal.c ../src/signaling.c unity_config.c)
+add_executable(testfifo test_signal.c ../src/fifo.c ../src/signaling.c unity_config.c)
 
 target_link_libraries(mytest PRIVATE
+  pico_stdlib
+  pico_async_context_freertos
+  FreeRTOS-Kernel-Heap4
+  unity
+)
+
+target_link_libraries(testfifo PRIVATE
   pico_stdlib
   pico_async_context_freertos
   FreeRTOS-Kernel-Heap4
@@ -15,14 +23,29 @@ if(PICO_CYW43_SUPPORTED)
     )
 endif()
 
+if(PICO_CYW43_SUPPORTED)
+    target_link_libraries(testfifo PRIVATE
+        pico_cyw43_arch_none
+    )
+endif()
+
 # Modify the below lines to enable/disable output over UART/USB.
 # These are mutually exclusive, only set one.
 pico_enable_stdio_uart(mytest 0)
 pico_enable_stdio_usb(mytest 1)
 
+# Modify the below lines to enable/disable output over UART/USB.
+# These are mutually exclusive, only set one.
+pico_enable_stdio_uart(testfifo 0)
+pico_enable_stdio_usb(testfifo 1)
+
 # This will speed up the simulation, since data won't be copied from the flash controller.
 # It does make the binary non-persistent on a real microcontroller.
 # pico_set_binary_type(mytest no_flash)
+
+# This will speed up the simulation, since data won't be copied from the flash controller.
+# It does make the binary non-persistent on a real microcontroller.
+# pico_set_binary_type(testfifo no_flash)
 
 find_program(RENODE renode
 # This is extra stuff so it can find the mac installation paths.
@@ -42,9 +65,17 @@ add_test(NAME simulate_mytest COMMAND
     -e "$ELF=@$<TARGET_FILE:mytest>; $WORKING=@${CMAKE_SOURCE_DIR}; include @${CMAKE_SOURCE_DIR}/test/simulate.resc; start"
     )
 
+add_test(NAME simulate_testfifo COMMAND
+    ${RENODE}
+     ${RENODE_FLAGS}
+    -e "$ELF=@$<TARGET_FILE:testfifo>; $WORKING=@${CMAKE_SOURCE_DIR}; include @${CMAKE_SOURCE_DIR}/test/simulate.resc; start"
+    )
 
 find_program(OPENOCD openocd)
 find_program(PICOTOOL picotool)
 
 add_custom_target(flash_test ${PICOTOOL} load -f $<TARGET_FILE:mytest> DEPENDS mytest)
 add_custom_target(openocd_test ${OPENOCD} -s ${OPENOCD_PATH} -f interface/cmsis-dap.cfg -f target/rp2040.cfg -c 'adapter speed 5000; program "$<TARGET_FILE:mytest>" verify reset exit' DEPENDS mytest)
+
+add_custom_target(flash_test_fifo ${PICOTOOL} load -f $<TARGET_FILE:testfifo> DEPENDS testfifo)
+add_custom_target(openocd_test_fifo ${OPENOCD} -s ${OPENOCD_PATH} -f interface/cmsis-dap.cfg -f target/rp2040.cfg -c 'adapter speed 5000; program "$<TARGET_FILE:testfifo>" verify reset exit' DEPENDS testfifo)
